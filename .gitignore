@@ -1,0 +1,87 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+nvd-elastic-feed
+nvd-fetcher
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Configuration files with sensitive data
+config.yaml
+*.env
+.env*
+
+# Runtime files
+.last_run
+*.pid
+*.sock
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.cert
+
+# Backup files
+*.bak
+*.backup
+
+# Editor backup files
+*~
+.#*
+\#*#
+
+# Local development overrides
+config.local.yaml
+docker-compose.override.yml
+
+# Test coverage
+coverage.html
+coverage.out
+
+# Vendor and module cache
+go.sum
+go.mod.backup

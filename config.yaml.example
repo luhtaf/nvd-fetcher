@@ -1,0 +1,131 @@
+# NVD Elastic Feed Configuration - Example File
+# Copy this to config.yaml and modify as needed
+
+nvd:
+  api:
+    base_url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
+    api_key: ""                         # Optional: Get from https://nvd.nist.gov/developers/request-an-api-key
+                                       # Empty = 5 req/30s | With key = 50 req/30s (10x faster!)
+    rate_limit:
+      requests_per_second: 0.167        # Auto-adjusted: 0.167 (no key) | 1.67 (with key)
+      burst_size: 2                     # Burst requests: 2 (conservative) | 5 (with key)
+    timeout: 30                         # HTTP request timeout in seconds
+    per_page: 2000                      # Records per API request (max 2000)
+    retry_attempts: 3                   # Retry failed requests
+    retry_delay: "2s"                   # Delay between retries
+  max_pages: 0                          # 0 = unlimited | 156+ for full 311K CVE | 200 for testing
+
+elasticsearch:
+  url: "https://username:password@your-elasticsearch-host:9200"  # Your Elasticsearch URL
+  verify_certs: false                   # SSL certificate verification
+  timeout: 60                           # Connection timeout
+  index_template: "nvd-cve-{year}"      # Index naming pattern: nvd-cve-2023, nvd-cve-2024, etc.
+  max_retries: 3                        # Elasticsearch retry attempts
+
+# Worker configuration for concurrent processing
+workers:
+  stage1_fetcher:                       # NVD API fetching stage
+    count: 1                            # Workers: 1 (no key) | 2 (with key) - respect rate limits
+    buffer_size: 50                     # Task buffer: 50 (conservative) | 100 (with key)
+    
+  stage2_parser:                        # JSON parsing stage (CPU-bound)
+    count: 10                           # Workers: 5-15 (based on CPU cores)
+    buffer_size: 500                    # Task buffer: larger for CPU-intensive tasks
+    
+  stage3_indexer:                       # Elasticsearch indexing stage
+    count: 3                            # Workers: 2-5 (based on ES performance)
+    buffer_size: 100                    # Task buffer size
+    bulk_size: 2000                     # Documents per bulk operation
+    bulk_timeout: "30s"                 # Bulk timeout
+    flush_interval: "10s"               # Auto-flush interval
+    strategy: "bulk"                    # Strategies: "bulk" | "streaming" | "parallel"
+
+# Application settings
+general:
+  mode: "init"                          # Modes: "init" (full sync) | "update" (incremental)
+  max_pages: 0                          # Page limit: 0 = all | 156+ for full data | number for testing
+  log_level: "info"                     # Levels: "debug" | "info" | "warn" | "error"
+  log_format: "json"                    # Formats: "json" | "text"
+  metrics_enabled: true                 # Enable Prometheus metrics endpoint
+  metrics_port: 8080                    # Metrics server port
+  last_run_file: ".last_run"            # File to store last update timestamp
+  default_lookback: "12h"               # First update lookback: "12h" | "24h" | "1h"
+
+# Graceful shutdown configuration
+shutdown:
+  timeout: "60s"                        # Graceful shutdown timeout
+  force_timeout: "120s"                 # Force shutdown timeout
+
+# ==========================================
+# MODE-SPECIFIC CONFIGURATIONS
+# ==========================================
+
+# INIT MODE (Full Synchronization):
+# - Downloads all available CVE data (~311K entries)
+# - No date filtering
+# - Recommended for initial setup or complete rebuild
+# - Time: ~15 min (no API key) | ~1.6 min (with API key)
+# 
+# Example usage:
+# general:
+#   mode: "init"
+#   max_pages: 0        # Process all available data
+# workers:
+#   stage1_fetcher:
+#     count: 1          # Conservative for rate limits
+#   stage3_indexer:
+#     strategy: "bulk"  # Fastest for large datasets
+
+# UPDATE MODE (Incremental Synchronization):
+# - Downloads only new/updated CVE since last run
+# - Uses lastModStartDate and lastModEndDate filters
+# - First run: uses default_lookback period
+# - Subsequent runs: from last_run timestamp to now
+# - Time: ~30 seconds - 2 minutes
+#
+# Example usage:
+# general:
+#   mode: "update"
+#   max_pages: 50       # Usually only few pages for updates
+#   default_lookback: "12h"
+# workers:
+#   stage1_fetcher:
+#     count: 1          # Single fetcher for updates
+#   stage3_indexer:
+#     strategy: "streaming"  # Better for small datasets
+
+# ==========================================
+# PERFORMANCE TUNING GUIDE
+# ==========================================
+
+# For FAST processing (with API key):
+# workers:
+#   stage1_fetcher:
+#     count: 2
+#     buffer_size: 100
+#   stage2_parser:
+#     count: 15
+#     buffer_size: 1000
+#   stage3_indexer:
+#     count: 5
+#     strategy: "parallel"
+
+# For MEMORY-constrained environments:
+# workers:
+#   stage1_fetcher:
+#     buffer_size: 25
+#   stage2_parser:
+#     count: 5
+#     buffer_size: 200
+#   stage3_indexer:
+#     count: 2
+#     bulk_size: 1000
+#     strategy: "streaming"
+
+# For HIGH-throughput Elasticsearch:
+# workers:
+#   stage3_indexer:
+#     count: 8
+#     bulk_size: 5000
+#     strategy: "parallel"
+#     bulk_timeout: "60s"
