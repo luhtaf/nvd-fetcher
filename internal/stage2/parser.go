@@ -383,50 +383,60 @@ func (p *Parser) parseCVSSv3(metrics map[string]interface{}) map[string]interfac
 	}
 
 	// Try v3.1 first
-	if cvssMetricV31, ok := metrics["cvssMetricV31"].([]interface{}); ok && len(cvssMetricV31) > 0 {
-		if firstMetric, ok := cvssMetricV31[0].(map[string]interface{}); ok {
-			if cvssData, ok := firstMetric["cvssData"].(map[string]interface{}); ok {
-				result := make(map[string]interface{})
-
-				if score, ok := cvssData["baseScore"].(float64); ok {
-					result["score"] = score
-				}
-
-				if sev, ok := firstMetric["baseSeverity"].(string); ok {
-					result["sev"] = sev
-				} else if sev, ok := cvssData["baseSeverity"].(string); ok {
-					result["sev"] = sev
-				}
-
-				result["source"] = "v3.1"
-				return result
-			}
-		}
+	if result := p.extractCVSSv3Metrics(metrics, "cvssMetricV31", "v3.1"); result != nil {
+		return result
 	}
 
 	// Try v3.0
-	if cvssMetricV30, ok := metrics["cvssMetricV30"].([]interface{}); ok && len(cvssMetricV30) > 0 {
-		if firstMetric, ok := cvssMetricV30[0].(map[string]interface{}); ok {
-			if cvssData, ok := firstMetric["cvssData"].(map[string]interface{}); ok {
-				result := make(map[string]interface{})
-
-				if score, ok := cvssData["baseScore"].(float64); ok {
-					result["score"] = score
-				}
-
-				if sev, ok := firstMetric["baseSeverity"].(string); ok {
-					result["sev"] = sev
-				} else if sev, ok := cvssData["baseSeverity"].(string); ok {
-					result["sev"] = sev
-				}
-
-				result["source"] = "v3.0"
-				return result
-			}
-		}
+	if result := p.extractCVSSv3Metrics(metrics, "cvssMetricV30", "v3.0"); result != nil {
+		return result
 	}
 
 	return nil
+}
+
+// extractCVSSv3Metrics extracts CVSS v3 metrics for a specific version
+func (p *Parser) extractCVSSv3Metrics(metrics map[string]interface{}, metricKey, version string) map[string]interface{} {
+	cvssMetrics, ok := metrics[metricKey].([]interface{})
+	if !ok || len(cvssMetrics) == 0 {
+		return nil
+	}
+
+	firstMetric, ok := cvssMetrics[0].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	cvssData, ok := firstMetric["cvssData"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	result := make(map[string]interface{})
+
+	// Extract score
+	if score, ok := cvssData["baseScore"].(float64); ok {
+		result["score"] = score
+	}
+
+	// Extract severity (try multiple locations)
+	if sev := p.extractSeverity(firstMetric, cvssData); sev != "" {
+		result["sev"] = sev
+	}
+
+	result["source"] = version
+	return result
+}
+
+// extractSeverity extracts severity from CVSS data
+func (p *Parser) extractSeverity(firstMetric, cvssData map[string]interface{}) string {
+	if sev, ok := firstMetric["baseSeverity"].(string); ok {
+		return sev
+	}
+	if sev, ok := cvssData["baseSeverity"].(string); ok {
+		return sev
+	}
+	return ""
 }
 
 // parseCVSSv2 parses CVSS v2.0 metrics

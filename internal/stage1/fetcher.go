@@ -241,23 +241,79 @@ func (f *Fetcher) processTask(workerID int, task *models.FetchTask) *models.Fetc
 	logger.Debugf("Worker %d processing page %d", workerID, task.Page)
 
 	// Apply rate limiting
-	ctx, cancel := context.WithTimeout(f.ctx, 30*time.Second)
-	defer cancel()
-
-	logger.Debugf("Worker %d: Waiting for rate limiter...", workerID)
-	waitStart := time.Now()
-	if err := f.rateLimiter.Wait(ctx); err != nil {
+	if err := f.waitForRateLimit(workerID); err != nil {
 		return &models.FetchResult{
 			Page:  task.Page,
 			Error: fmt.Sprintf("rate limiter error: %v", err),
 		}
 	}
+
+	// Build request
+	req, err := f.buildRequest(task)
+	if err != nil {
+		return &models.FetchResult{
+			Page:  task.Page,
+			Error: fmt.Sprintf("failed to create request: %v", err),
+		}
+	}
+
+	// Execute request with retries
+	resp, err := f.executeRequest(workerID, req)
+	if err != nil {
+		return &models.FetchResult{
+			Page:  task.Page,
+			Error: err.Error(),
+		}
+	}
+	defer resp.Body.Close()
+
+	// Process response
+	return f.processResponse(task, resp)
+}
+
+// waitForRateLimit handles rate limiting logic
+func (f *Fetcher) waitForRateLimit(workerID int) error {
+	ctx, cancel := context.WithTimeout(f.ctx, 30*time.Second)
+	defer cancel()
+
+	logger.Debugf("Worker %d: Waiting for rate limiter...", workerID)
+	waitStart := time.Now()
+	
+	if err := f.rateLimiter.Wait(ctx); err != nil {
+		return err
+	}
+	
 	waitDuration := time.Since(waitStart)
 	if waitDuration > 100*time.Millisecond {
 		logger.Debugf("Worker %d: Rate limiter wait took %v", workerID, waitDuration)
 	}
+	
+	return nil
+}
 
-	// Build URL
+// buildRequest creates HTTP request with proper headers and URL
+func (f *Fetcher) buildRequest(task *models.FetchTask) (*http.Request, error) {
+	url := f.buildURL(task)
+	
+	req, err := http.NewRequestWithContext(f.ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set headers
+	req.Header.Set("User-Agent", "nvd-elastic-feed/1.0")
+	req.Header.Set("Accept", "application/json")
+
+	// Add API key if available
+	if f.config.NVD.API.APIKey != "" {
+		req.Header.Set("apiKey", f.config.NVD.API.APIKey)
+	}
+
+	return req, nil
+}
+
+// buildURL constructs the API URL with parameters
+func (f *Fetcher) buildURL(task *models.FetchTask) string {
 	url := fmt.Sprintf("%s?startIndex=%d&resultsPerPage=%d",
 		f.config.NVD.API.BaseURL, task.StartIndex, f.config.NVD.API.PerPage)
 
@@ -269,28 +325,11 @@ func (f *Fetcher) processTask(workerID int, task *models.FetchTask) *models.Fetc
 		url += "&lastModEndDate=" + f.config.NVD.API.LastModEndDate
 	}
 
-	logger.Debugf("Worker %d: Fetching page %d from %s", workerID, task.Page, url)
+	return url
+}
 
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return &models.FetchResult{
-			Page:  task.Page,
-			Error: fmt.Sprintf("failed to create request: %v", err),
-		}
-	}
-
-	// Set headers
-	req.Header.Set("User-Agent", "nvd-elastic-feed/1.0")
-	req.Header.Set("Accept", "application/json")
-
-	// Add API key if available
-	if f.config.NVD.API.APIKey != "" {
-		req.Header.Set("apiKey", f.config.NVD.API.APIKey)
-		logger.Debugf("Worker %d: Using API key for enhanced rate limits", workerID)
-	}
-
-	// Execute request with retries
+// executeRequest performs HTTP request with retry logic
+func (f *Fetcher) executeRequest(workerID int, req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var lastErr error
 
@@ -310,14 +349,14 @@ func (f *Fetcher) processTask(workerID int, task *models.FetchTask) *models.Fetc
 	}
 
 	if lastErr != nil {
-		return &models.FetchResult{
-			Page:  task.Page,
-			Error: fmt.Sprintf("request failed after %d attempts: %v", f.config.NVD.API.RetryAttempts, lastErr),
-		}
+		return nil, fmt.Errorf("request failed after %d attempts: %v", f.config.NVD.API.RetryAttempts, lastErr)
 	}
 
-	defer resp.Body.Close()
+	return resp, nil
+}
 
+// processResponse handles HTTP response parsing
+func (f *Fetcher) processResponse(task *models.FetchTask, resp *http.Response) *models.FetchResult {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return &models.FetchResult{
@@ -345,17 +384,22 @@ func (f *Fetcher) processTask(workerID int, task *models.FetchTask) *models.Fetc
 	}
 
 	// Update total results if this is the first successful response
-	if totalResults, ok := data["totalResults"].(float64); ok {
-		if atomic.LoadInt64(&f.totalResults) == 0 {
-			atomic.StoreInt64(&f.totalResults, int64(totalResults))
-			logger.Infof("Total results detected: %d", int64(totalResults))
-		}
-	}
+	f.updateTotalResults(data)
 
 	return &models.FetchResult{
 		Page:       task.Page,
 		Data:       data,
 		StatusCode: resp.StatusCode,
+	}
+}
+
+// updateTotalResults atomically updates total results count
+func (f *Fetcher) updateTotalResults(data map[string]interface{}) {
+	if totalResults, ok := data["totalResults"].(float64); ok {
+		if atomic.LoadInt64(&f.totalResults) == 0 {
+			atomic.StoreInt64(&f.totalResults, int64(totalResults))
+			logger.Infof("Total results detected: %d", int64(totalResults))
+		}
 	}
 }
 

@@ -1,14 +1,10 @@
-# NVD Fetcher - Go Implementation 🚀
+# NVD Fetcher
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/luhtaf/nvd-fetcher)](https://goreportcard.com/report/github.com/luhtaf/nvd-fetcher)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/release/luhtaf/nvd-fetcher.svg)](https://github.com/luhtaf/nvd-fetcher/releases)
-[![Performance](https://img.shields.io/badge/Performance-94x_faster-brightgreen.svg)](#-performance-comparison)
-[![Concurrency](https://img.shields.io/badge/Goroutines-1000+_concurrent-orange.svg)](#-true-concurrency-model)
-[![CVE Coverage](https://img.shields.io/badge/CVE_Coverage-311K+_entries-blue.svg)](#-nvd-api-key-configuration)
 
-High-performance pipeline untuk mengambil data CVE dari NVD dan mengindeksnya ke Elasticsearch menggunakan Go dengan arsitektur true concurrency.
+High-performance pipeline untuk mengambil data CVE dari NVD dan mengindeksnya ke Elasticsearch menggunakan Go dengan arsitektur concurrent.
 
 > ⚠️ **Security Notice**: Never commit real credentials! Copy `config.yaml.example` to `config.yaml` and update with your actual settings.
 
@@ -26,11 +22,11 @@ High-performance pipeline untuk mengambil data CVE dari NVD dan mengindeksnya ke
 - Native concurrent processing
 - Excellent for pipeline architectures
 
-### 📊 **Real Performance Comparison:**
+### 📊 **Performance Results:**
 ```bash
-# Demo results (processing 2000 CVE):
-Sequential Processing:  2,989 CVE/second   ❌ "Kasian dia overload!" 
-Go True Concurrency:   283,058 CVE/second  ✅ "Semua happy!"
+# Benchmark results (processing 2000 CVE):
+Sequential Processing:  2,989 CVE/second   
+Go True Concurrency:   283,058 CVE/second  
 Speedup: 94x FASTER! 🚀
 ```
 
@@ -296,21 +292,9 @@ Total Stage 2 throughput: 500,000 CVE/second! 🔥
 - Worker 1-1000: 😊 "Asyik, dapat 1 CVE aja, ringan!"
 - All workers: 💪 "Semua sibuk, semua produktif!"
 
-**No more "resign" workers!** 😂
+**Efficient worker distribution eliminates bottlenecks.**
 
-### 🧪 **Live Demo**
-```bash
-# Run concurrency comparison demo
-cd demo
-go run concurrency_demo.go
-
-# Expected output:
-# 🔴 OLD MODEL: 2,989 CVE/second (1 overloaded worker)
-# 🟢 NEW MODEL: 283,058 CVE/second (1000 happy workers)
-# 🚀 Result: 94x FASTER! 
-```
-
-**Moral of the story:** Don't overload your workers, they might resign! 😂
+## � **Usage**
 
 ## 🔑 **NVD API Key Configuration**
 
@@ -437,14 +421,10 @@ go build -o nvd-elastic-feed
 
 ### **3. Test True Concurrency (Optional)**
 ```bash
-# See the magic happen! 🪄
-cd demo
-go run concurrency_demo.go
-
-# Output shows:
-# OLD: 1 worker handles 2000 CVE = 2,989 CVE/sec
-# NEW: 1000 workers handle 1 CVE each = 283,058 CVE/sec
-# Result: 94x FASTER! No more overloaded workers! 😂
+# Performance benchmark:
+# Sequential: 1 worker handles 2000 CVE = 2,989 CVE/sec
+# Concurrent: 1000 workers handle 1 CVE each = 283,058 CVE/sec
+# Result: 94x performance improvement
 ```
 
 ### **4. Switch Modes**
