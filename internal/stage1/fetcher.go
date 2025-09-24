@@ -278,23 +278,23 @@ func (f *Fetcher) waitForRateLimit(workerID int) error {
 
 	logger.Debugf("Worker %d: Waiting for rate limiter...", workerID)
 	waitStart := time.Now()
-	
+
 	if err := f.rateLimiter.Wait(ctx); err != nil {
 		return err
 	}
-	
+
 	waitDuration := time.Since(waitStart)
 	if waitDuration > 100*time.Millisecond {
 		logger.Debugf("Worker %d: Rate limiter wait took %v", workerID, waitDuration)
 	}
-	
+
 	return nil
 }
 
 // buildRequest creates HTTP request with proper headers and URL
 func (f *Fetcher) buildRequest(task *models.FetchTask) (*http.Request, error) {
 	url := f.buildURL(task)
-	
+
 	req, err := http.NewRequestWithContext(f.ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
