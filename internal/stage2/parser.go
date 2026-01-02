@@ -271,6 +271,9 @@ func (p *Parser) buildProcessedCVE(cveData map[string]interface{}) map[string]in
 	processed := make(map[string]interface{})
 
 	// Basic fields
+	if id, ok := cveData["id"].(string); ok {
+		processed["id"] = id
+	}
 	processed["desc"] = p.getDescription(cveData)
 	if published, ok := cveData["published"].(string); ok {
 		processed["published"] = published
