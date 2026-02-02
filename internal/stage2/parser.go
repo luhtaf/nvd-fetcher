@@ -319,6 +319,13 @@ func (p *Parser) buildProcessedCVE(cveData map[string]interface{}) map[string]in
 		processed["cisa"] = cisaData["cisa"]
 	}
 
+	// Parse Configurations (Vendors & Products)
+	if configData, _ := p.parseConfigurations(cveData); configData != nil {
+		processed["vendors"] = configData["vendors"]
+		processed["products"] = configData["products"]
+		processed["affected"] = configData["affected"]
+	}
+
 	return processed
 }
 
@@ -551,4 +558,81 @@ func (p *Parser) getActiveWorkerCount() int {
 		return 0
 	}
 	return p.config.Workers.Stage2Parser.Count
+}
+
+// parseConfigurations extracts vendor, product, and version info from configurations
+func (p *Parser) parseConfigurations(cveData map[string]interface{}) (map[string]interface{}, error) {
+	configs, ok := cveData["configurations"].([]interface{})
+	if !ok || len(configs) == 0 {
+		return nil, nil
+	}
+
+	vendorsMap := make(map[string]bool)
+	productsMap := make(map[string]bool)
+	var affected []map[string]string
+
+	for _, config := range configs {
+		nodes, ok := config.(map[string]interface{})["nodes"].([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, node := range nodes {
+			cpeMatches, ok := node.(map[string]interface{})["cpeMatch"].([]interface{})
+			if !ok {
+				continue
+			}
+
+			for _, match := range cpeMatches {
+				matchMap, ok := match.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				criteria, ok := matchMap["criteria"].(string)
+				if !ok {
+					continue
+				}
+
+				// Parse CPE string: cpe:2.3:part:vendor:product:version:update:edition:language:sw_edition:target_sw:target_hw:other
+				parts := strings.Split(criteria, ":")
+				if len(parts) >= 6 {
+					vendor := parts[3]
+					product := parts[4]
+					version := parts[5]
+
+					vendorsMap[vendor] = true
+					productsMap[product] = true
+
+					affectedItem := map[string]string{
+						"vendor":  vendor,
+						"product": product,
+						"version": version,
+						"cpe":     criteria,
+					}
+					affected = append(affected, affectedItem)
+				}
+			}
+		}
+	}
+
+	if len(affected) == 0 {
+		return nil, nil
+	}
+
+	vendors := make([]string, 0, len(vendorsMap))
+	for v := range vendorsMap {
+		vendors = append(vendors, v)
+	}
+
+	products := make([]string, 0, len(productsMap))
+	for p := range productsMap {
+		products = append(products, p)
+	}
+
+	return map[string]interface{}{
+		"vendors":  vendors,
+		"products": products,
+		"affected": affected,
+	}, nil
 }
