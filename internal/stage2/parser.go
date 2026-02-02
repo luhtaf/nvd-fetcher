@@ -269,6 +269,7 @@ func (p *Parser) parseSingleCVE(vulnData map[string]interface{}) (*models.Parsed
 // buildProcessedCVE builds the processed CVE data structure
 func (p *Parser) buildProcessedCVE(cveData map[string]interface{}) map[string]interface{} {
 	processed := make(map[string]interface{})
+	processed["original"] = cveData
 
 	// Basic fields
 	if id, ok := cveData["id"].(string); ok {
