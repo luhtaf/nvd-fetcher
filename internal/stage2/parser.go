@@ -326,6 +326,22 @@ func (p *Parser) buildProcessedCVE(cveData map[string]interface{}) map[string]in
 		processed["affected"] = configData["affected"]
 	}
 
+	// Add Timeline for visualization
+	timeline := make(map[string]interface{})
+	if published, ok := cveData["published"].(string); ok {
+		timeline["published"] = published
+		// Try to parse date to extract year/month for easy aggregation
+		// Format example: 2002-06-25T04:00:00.000
+		if t, err := time.Parse("2006-01-02T15:04:05.000", published); err == nil {
+			timeline["year"] = t.Year()
+			timeline["month"] = int(t.Month())
+		}
+	}
+	if lastModified, ok := cveData["lastModified"].(string); ok {
+		timeline["lastModified"] = lastModified
+	}
+	processed["timeline"] = timeline
+
 	return processed
 }
 
