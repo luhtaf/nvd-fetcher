@@ -44,6 +44,10 @@ func NewBulkIndexer(cfg *config.Config) (IndexerStrategy, error) {
 		return nil, fmt.Errorf("failed to connect to Elasticsearch: %w", err)
 	}
 
+	if err := ensureIndexTemplate(client, cfg.Elasticsearch.URL, cfg.Elasticsearch.IndexTemplate); err != nil {
+		return nil, fmt.Errorf("failed to setup index template: %w", err)
+	}
+
 	return &BulkIndexerImpl{
 		client:  client,
 		config:  cfg,
@@ -179,6 +183,58 @@ func testESConnection(client HTTPClient, baseURL string) error {
 	return nil
 }
 
+// ensureIndexTemplate ensures the index template exists with correct mappings
+func ensureIndexTemplate(client HTTPClient, baseURL string, indexTemplateConfig string) error {
+	// Derive pattern from config (e.g., list-cve-{year} -> list-cve-*)
+	pattern := strings.ReplaceAll(indexTemplateConfig, "{year}", "*")
+
+	// Template body to force version fields as keywords
+	templateBody := map[string]interface{}{
+		"index_patterns": []string{pattern},
+		"mappings": map[string]interface{}{
+			"properties": map[string]interface{}{
+				"original.configurations.nodes.cpeMatch.versionEndIncluding":   map[string]string{"type": "keyword"},
+				"original.configurations.nodes.cpeMatch.versionEndExcluding":   map[string]string{"type": "keyword"},
+				"original.configurations.nodes.cpeMatch.versionStartIncluding": map[string]string{"type": "keyword"},
+				"original.configurations.nodes.cpeMatch.versionStartExcluding": map[string]string{"type": "keyword"},
+			},
+		},
+	}
+
+	bodyBytes, err := json.Marshal(templateBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal template body: %w", err)
+	}
+
+	// Use legacy template API for broad compatibility
+	url := fmt.Sprintf("%s/_template/nvd_version_mapping_keyword", baseURL)
+	req, err := http.NewRequest("PUT", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	
+	// Use a short timeout for template creation
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute template creation request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("template creation error %d: %s", resp.StatusCode, string(body))
+	}
+
+	logger.Info("Successfully updated Elasticsearch index template for version fields")
+	return nil
+}
+
 // StreamingIndexerImpl implements streaming indexing strategy
 type StreamingIndexerImpl struct {
 	client  HTTPClient
@@ -199,6 +255,10 @@ func NewStreamingIndexer(cfg *config.Config) (IndexerStrategy, error) {
 
 	if err := testESConnection(client, cfg.Elasticsearch.URL); err != nil {
 		return nil, fmt.Errorf("failed to connect to Elasticsearch: %w", err)
+	}
+
+	if err := ensureIndexTemplate(client, cfg.Elasticsearch.URL, cfg.Elasticsearch.IndexTemplate); err != nil {
+		return nil, fmt.Errorf("failed to setup index template: %w", err)
 	}
 
 	return &StreamingIndexerImpl{
@@ -350,6 +410,10 @@ func NewParallelIndexer(cfg *config.Config) (IndexerStrategy, error) {
 
 	if err := testESConnection(client, cfg.Elasticsearch.URL); err != nil {
 		return nil, fmt.Errorf("failed to connect to Elasticsearch: %w", err)
+	}
+
+	if err := ensureIndexTemplate(client, cfg.Elasticsearch.URL, cfg.Elasticsearch.IndexTemplate); err != nil {
+		return nil, fmt.Errorf("failed to setup index template: %w", err)
 	}
 
 	pool := make(chan struct{}, cfg.Workers.Stage3Indexer.Count*2) // Limit concurrent operations
