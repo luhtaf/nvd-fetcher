@@ -136,6 +136,9 @@ func (b *BulkIndexerImpl) parseBulkResponse(resp *http.Response) (*models.IndexR
 					result.FailedCount++
 					errorInfo := fmt.Sprintf("Index error: status=%v, id=%v, index=%v",
 						status, indexOp["_id"], indexOp["_index"])
+					if errData, ok := indexOp["error"]; ok {
+						errorInfo += fmt.Sprintf(", reason=%v", errData)
+					}
 					result.Errors = append(result.Errors, fmt.Errorf(errorInfo))
 				}
 			}

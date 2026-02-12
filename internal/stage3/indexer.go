@@ -350,7 +350,7 @@ func (idx *Indexer) flushBulkBufferLocked() {
 			logger.Warnf("Bulk operation: %d success, %d failed", result.SuccessCount, result.FailedCount)
 			for i, err := range result.Errors {
 				if i < 5 { // Log first 5 errors
-					logger.Debugf("Failed item: %+v", err)
+					logger.Warnf("Failed item: %+v", err)
 				}
 			}
 		} else {
